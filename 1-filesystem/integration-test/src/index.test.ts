@@ -64,7 +64,7 @@ describe("GET /read", () => {
     //TODO: what is the behaviour of toEqual that it fails to compare ? 
 
     expect(response.status).toBe(200);
-    expect(response.data).toEqual("Learning Express or actixthis needs to be appended");
+    expect(response.data).toStrictEqual("Learning Express or actixthis needs to be appended");
   });
 
 });
@@ -92,7 +92,6 @@ describe("GET /add-user", () => {
     expect(response.data).toEqual("User added successfully!");
   });
 });
-/*
 
 describe("GET /check-user ", () => {
   it("blocks users with less age ", async () => {
@@ -144,7 +143,6 @@ describe("GET /is-blocked ", () => {
   });
 });
 
-
 describe("GET /users ", () => {
   it("should show blocked ", async () => {
     const response = await axios.get(`${BASE_URL}/users`);
@@ -162,4 +160,3 @@ describe("DELETE /clear-data ", () => {
     expect(response.data).toEqual("All data cleared successfully!");
   });
 });
-  */
