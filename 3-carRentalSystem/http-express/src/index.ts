@@ -118,12 +118,13 @@ app.put("/bookings/:userId/:bookingId", (req: Request, res: Response) => {
 app.put("PUT /bookings/:userId/:bookingId/status", (req: Request, res: Response) => {
 
   const userId = req.params.userId as string;
+  const { status } = req.body;
   const bookingId = req.params.bookingId as string;
 
   const booking = users.find(x => x.id == parseInt(userId))?.bookings.find(x => x.bookingId == parseInt(bookingId));
   if (!booking) return;
 
-  booking.status = booking.status == "booked" ? "completed" : "cancelled";
+  booking.status = status;
   res.json({ message: "Status updated successfully" });
 });
 

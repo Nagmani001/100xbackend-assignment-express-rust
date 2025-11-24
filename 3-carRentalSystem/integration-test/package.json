@@ -11,6 +11,8 @@
   "license": "ISC",
   "packageManager": "pnpm@10.21.0",
   "dependencies": {
+    "@types/axios": "^0.14.4",
+    "axios": "^1.13.2",
     "vitest": "^4.0.12"
   }
 }
