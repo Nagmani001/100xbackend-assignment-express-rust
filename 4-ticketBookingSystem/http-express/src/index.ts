@@ -187,6 +187,8 @@ app.delete("/bookings/:userId/:bookingId", (req: Request, res: Response) => {
   const booking = users.bookings.find((x: any) => x.bookingId == parseInt(bookingId));
   booking.status = "cancelled";
 
+  fs.writeFileSync("./data.txt", JSON.stringify(parsedData));
+
   res.json({ message: "Booking cancelled successfully" });
 });
 
