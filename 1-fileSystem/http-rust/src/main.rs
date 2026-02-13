@@ -42,9 +42,6 @@ async fn append_to_file(message: web::Query<Message>) -> impl Responder {
 
 async fn read() -> impl Responder {
     let data = fs::read_to_string("notes.txt").unwrap();
-    //TODO: even though i am returning the right thing from backend , the test fails
-    //but it passes with express , also there could be issue with how i should be wrigint tests
-    println!("{}", data);
     HttpResponse::Ok().body(data)
 }
 

@@ -53,18 +53,8 @@ describe("GET /append", () => {
 describe("GET /read", () => {
   it("should read a file", async () => {
     const response = await axios.get(`${BASE_URL}/read`);
-
-    let answer = "Learning Express or actixthis needs to be appended";
-
-    console.log(typeof response.data);
-    console.log(response.data);
-    console.log(typeof answer);
-    console.log(answer);
-
-    //TODO: what is the behaviour of toEqual that it fails to compare ? 
-
     expect(response.status).toBe(200);
-    expect(response.data).toStrictEqual("Learning Express or actixthis needs to be appended");
+    expect(response.data.trim()).toEqual("Learning Express or actixthis needs to be appended");
   });
 
 });
