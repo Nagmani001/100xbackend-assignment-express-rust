@@ -1,234 +1,226 @@
 import express, { Request, Response } from "express";
-import fs from "fs";
 
 const app = express();
-
-
 app.use(express.json());
 
-let userId = 1;
-let BOOKINGID = 1001;
+let GLOBAL_USER_ID = 1;
+let GLOBAL_BOOKING_ID = 1001;
+
+interface Show {
+  showId: number;
+  time: string;
+  pricePerSeat: number;
+  availableSeats: number;
+}
+
+interface Movie {
+  id: number;
+  title: string;
+  genre: string;
+  duration: number;
+  shows: Show[];
+}
+
+interface Booking {
+  bookingId: number;
+  movieId: number;
+  showId: number;
+  seats: number;
+  totalAmount: number;
+  status: string;
+}
+
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  password: string;
+  bookings: Booking[];
+}
+
+const movies: Movie[] = [
+  {
+    id: 1,
+    title: "Inception",
+    genre: "Sci-Fi",
+    duration: 148,
+    shows: [
+      { showId: 101, time: "10:00 AM", pricePerSeat: 200, availableSeats: 50 },
+      { showId: 102, time: "2:00 PM", pricePerSeat: 250, availableSeats: 50 },
+      { showId: 103, time: "6:00 PM", pricePerSeat: 300, availableSeats: 50 },
+    ],
+  },
+  {
+    id: 2,
+    title: "The Dark Knight",
+    genre: "Action",
+    duration: 152,
+    shows: [
+      { showId: 201, time: "11:00 AM", pricePerSeat: 200, availableSeats: 50 },
+      { showId: 202, time: "3:00 PM", pricePerSeat: 250, availableSeats: 50 },
+      { showId: 203, time: "7:00 PM", pricePerSeat: 300, availableSeats: 50 },
+    ],
+  },
+  {
+    id: 3,
+    title: "Interstellar",
+    genre: "Sci-Fi",
+    duration: 169,
+    shows: [
+      { showId: 301, time: "12:00 PM", pricePerSeat: 250, availableSeats: 50 },
+      { showId: 302, time: "5:00 PM", pricePerSeat: 300, availableSeats: 50 },
+    ],
+  },
+];
+
+const users: User[] = [];
+
+const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 app.post("/signup", (req: Request, res: Response) => {
-  const { username, password, email } = req.body;
-  const id = userId++;
-
-  const user = {
-    id: id,
-    username,
-    password,
-    email,
-    bookings: []
-  };
-  const data = fs.readFileSync("./data.txt", "utf-8");
-
-  const parsedData = JSON.parse(data);
-  parsedData.users.push(user);
-
-  fs.writeFileSync("./data.txt", JSON.stringify(parsedData));
-
-  res.status(201).json({
-    message: "User created successfully",
-    userId: id
-  })
+  const { username, email, password } = req.body || {};
+  if (
+    typeof username !== "string" ||
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    !emailRe.test(email)
+  ) {
+    return res.status(400).json({ message: "invalid input" });
+  }
+  if (users.find((u) => u.email === email)) {
+    return res.status(401).json({ message: "user already exists" });
+  }
+  const id = GLOBAL_USER_ID++;
+  users.push({ id, username, email, password, bookings: [] });
+  res.status(201).json({ message: "User created successfully", userId: id });
 });
 
-
-app.get("/movies", (req: Request, res: Response) => {
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const movies = parsedData.movies;
-
-  res.status(200).json(movies);
+app.get("/movies", (_req: Request, res: Response) => {
+  res.json({ movies });
 });
-
 
 app.get("/movies/:movieId", (req: Request, res: Response) => {
-  const id = req.params.movieId as string;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const movie = parsedData.movies.find((x: any) => x.id == parseInt(id));
-
-  if (!movie) {
-    res.status(404).json({ message: "Movie not found" });
-  } else {
-    res.json(movie);
-  }
+  const id = parseInt(req.params.movieId as string);
+  const movie = movies.find((m) => m.id === id);
+  if (!movie) return res.status(404).json({ message: "Movie not found" });
+  res.json(movie);
 });
 
 app.get("/movies/:movieId/shows", (req: Request, res: Response) => {
-  const id = req.params.movieId as string;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const movie = parsedData.movies.find((x: any) => x.id == parseInt(id));
-  res.json(movie.shows);
+  const id = parseInt(req.params.movieId as string);
+  const movie = movies.find((m) => m.id === id);
+  if (!movie) return res.status(404).json({ message: "Movie not found" });
+  res.json({ shows: movie.shows });
 });
 
 app.post("/bookings/:userId", (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  const { movieId, showId, seats } = req.body;
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-
-  const movie = parsedData.movies.find((x: any) => x.id == parseInt(movieId));
-  const show = movie.shows.find((x: any) => x.showId == parseInt(showId));
-
+  const userId = parseInt(req.params.userId as string);
+  const { movieId, showId, seats } = req.body || {};
+  const user = users.find((u) => u.id === userId);
+  if (!user) return res.status(404).json({ message: "user not found" });
+  const movie = movies.find((m) => m.id === movieId);
+  if (!movie) return res.status(404).json({ message: "Movie not found" });
+  const show = movie.shows.find((s) => s.showId === showId);
+  if (!show) return res.status(404).json({ message: "Show not found" });
   if (show.availableSeats < seats) {
-    return res.json({ message: "Not enough seats available" });
+    return res.status(400).json({ message: "Not enough seats available" });
   }
-
-  const bookingId = BOOKINGID++;
-  const booking = {
-    bookingId: bookingId,
+  show.availableSeats -= seats;
+  const bookingId = GLOBAL_BOOKING_ID++;
+  const totalAmount = show.pricePerSeat * seats;
+  user.bookings.push({
+    bookingId,
     movieId,
     showId,
     seats,
-    totalAmount: show.pricePerSeat * parseInt(seats),
+    totalAmount,
     status: "confirmed",
-    bookingDate: new Date()
-  };
-
-
-  const user = parsedData.users.find((x: any) => x.id == userId);
-  user.bookings.push(booking);
-  console.log(parsedData);
-
-  fs.writeFileSync("./data.txt", JSON.stringify(parsedData));
-
-
+  });
   res.status(201).json({
     message: "Booking successful",
-    bookingId: bookingId,
+    bookingId,
     movieTitle: movie.title,
     showTime: show.time,
     seats,
-    totalAmount: show.pricePerSeat * parseInt(seats)
+    totalAmount,
   });
 });
 
-
 app.get("/bookings/:userId", (req: Request, res: Response) => {
-  const userId = req.params.userId as string;
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const user = parsedData.users.find((x: any) => x.id == parseInt(userId));
-  res.status(200).json(user.bookings);
+  const userId = parseInt(req.params.userId as string);
+  const user = users.find((u) => u.id === userId);
+  if (!user) return res.status(404).json({ message: "user not found" });
+  res.json({ bookings: user.bookings });
 });
 
 app.get("/bookings/:userId/:bookingId", (req: Request, res: Response) => {
-  const userId = req.params.userId as string;
-  const bookingId = req.params.bookingId as string;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const user = parsedData.users.find((x: any) => x.id == parseInt(userId));
-  const booking = user.bookings.find((x: any) => x.bookingId == parseInt(bookingId));
-
-  if (!booking) {
-    res.status(404).json({ "message": "Booking not found" })
-  } else {
-    res.json(booking);
-  }
+  const userId = parseInt(req.params.userId as string);
+  const bookingId = parseInt(req.params.bookingId as string);
+  const user = users.find((u) => u.id === userId);
+  const booking = user?.bookings.find((b) => b.bookingId === bookingId);
+  if (!booking) return res.status(404).json({ message: "Booking not found" });
+  res.json(booking);
 });
 
-
 app.put("/bookings/:userId/:bookingId", (req: Request, res: Response) => {
-  const userId = req.params.userId as string;
-  const bookingId = req.params.bookingId as string;
-  const { seats } = req.body;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const users = parsedData.users.find((x: any) => x.id == parseInt(userId));
-
-  const booking = users.bookings.find((x: any) => x.bookingId == parseInt(bookingId));
-  console.log("booking before", booking);
-
-  const movieId = booking.movieId;
-  const showId = booking.showId;
-
-  const movie = parsedData.movies.find((x: any) => x.id == parseInt(movieId));
-  const show = movie.shows.find((x: any) => x.showId == parseInt(showId));
-
-  if (show.availableSeats < parseInt(seats)) {
-    return res.status(404).json({
-      message: "not enough seats"
-    });
+  const userId = parseInt(req.params.userId as string);
+  const bookingId = parseInt(req.params.bookingId as string);
+  const { seats } = req.body || {};
+  const user = users.find((u) => u.id === userId);
+  const booking = user?.bookings.find((b) => b.bookingId === bookingId);
+  if (!booking) return res.status(404).json({ message: "Booking not found" });
+  const movie = movies.find((m) => m.id === booking.movieId);
+  const show = movie?.shows.find((s) => s.showId === booking.showId);
+  if (!show) return res.status(404).json({ message: "Show not found" });
+  if (show.availableSeats < seats) {
+    return res.status(400).json({ message: "not enough seats" });
   }
-  show.availableSeats -= parseInt(seats);
-  const seat = parseInt(booking.seats) + parseInt(seats);
-  booking.seats = seat.toString();
+  show.availableSeats -= seats;
+  booking.seats += seats;
   booking.totalAmount = booking.seats * show.pricePerSeat;
-
-  console.log("booking after", booking);
-
-
   res.json({
     message: "Booking updated successfully",
     bookingId: booking.bookingId,
     seats: booking.seats,
     totalAmount: booking.totalAmount,
   });
-
 });
 
 app.delete("/bookings/:userId/:bookingId", (req: Request, res: Response) => {
-
-  const userId = req.params.userId as string;
-  const bookingId = req.params.bookingId as string;
-  const { seats } = req.body;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const users = parsedData.users.find((x: any) => x.id == parseInt(userId));
-
-  const booking = users.bookings.find((x: any) => x.bookingId == parseInt(bookingId));
+  const userId = parseInt(req.params.userId as string);
+  const bookingId = parseInt(req.params.bookingId as string);
+  const user = users.find((u) => u.id === userId);
+  const booking = user?.bookings.find((b) => b.bookingId === bookingId);
+  if (!booking) return res.status(404).json({ message: "Booking not found" });
   booking.status = "cancelled";
-
-  fs.writeFileSync("./data.txt", JSON.stringify(parsedData));
-
   res.json({ message: "Booking cancelled successfully" });
 });
 
 app.get("/summary/:userId", (req: Request, res: Response) => {
-  const userId = req.params.userId as string;
-
-  const data = fs.readFileSync("./data.txt", "utf-8");
-  const parsedData = JSON.parse(data);
-  const user = parsedData.users.find((x: any) => x.id == userId);
-  let totalAmount = 0;
-  let totalConfirmedBooking = 0;
-  let totalCancelledBooking = 0;
+  const userId = parseInt(req.params.userId as string);
+  const user = users.find((u) => u.id === userId);
+  if (!user) return res.status(404).json({ message: "user not found" });
+  let totalAmountSpent = 0;
+  let confirmedBookings = 0;
+  let cancelledBookings = 0;
   let totalSeatsBooked = 0;
-
-  user.bookings.forEach((x: any) => {
-    totalAmount += x.totalAmount;
-    if (x.status == "confirmed") {
-      totalConfirmedBooking += 1;
-    } else {
-      totalCancelledBooking += 1;
-    }
-    totalSeatsBooked += x.seats;
-
-
-  });
-
-
+  for (const b of user.bookings) {
+    totalAmountSpent += b.totalAmount;
+    totalSeatsBooked += b.seats;
+    if (b.status === "confirmed") confirmedBookings++;
+    else if (b.status === "cancelled") cancelledBookings++;
+  }
   res.json({
-    userId: parseInt(userId),
+    userId,
     username: user.username,
     totalBookings: user.bookings.length,
-    totalAmountSpent: totalAmount,
-    confirmedBookings: totalConfirmedBooking,
-    cancelledBookings: totalCancelledBooking,
-    totalSeatsBooked: totalSeatsBooked
+    totalAmountSpent,
+    confirmedBookings,
+    cancelledBookings,
+    totalSeatsBooked,
   });
 });
 
 app.listen(3000, () => {
   console.log("server running on port 3000");
 });
-
-

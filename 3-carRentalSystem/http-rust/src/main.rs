@@ -1,306 +1,7 @@
-use actix_web::{App, HttpResponse, HttpServer, Responder, Result, web};
-use serde::{Deserialize, Serialize, de};
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::sync::Mutex;
-
-#[derive(Deserialize, Debug)]
-struct User_For_Signup {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-struct SignupResponse {
-    message: String,
-    userId: u64,
-}
-async fn signup(
-    body: web::Json<User_For_Signup>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let mut data = state.users.lock().unwrap();
-    let mut globalId = state.globalId.lock().unwrap();
-
-    let user = User {
-        id: *globalId,
-        username: body.username.clone(),
-        password: body.password.clone(),
-        booking: Vec::new(),
-    };
-
-    data.push(user);
-    *globalId += 1;
-
-    let originalId = *globalId - 1;
-    let response = SignupResponse {
-        message: String::from("User created successfully"),
-        userId: originalId,
-    };
-
-    Ok(web::Json(response))
-}
-
-async fn users(state: web::Data<AppState>) -> Result<impl Responder> {
-    let users = state.users.lock().unwrap();
-    let users = users.clone();
-    Ok(web::Json(users))
-}
-
-#[derive(Deserialize, Debug)]
-struct Booking_Create {
-    carName: String,
-    days: u64,
-    rentPerDay: u64,
-}
-
-#[derive(Serialize)]
-struct Booking_Response {
-    message: String,
-    bookingId: u64,
-    totalCost: u64,
-}
-
-async fn booking(
-    path: web::Path<(String)>,
-    state: web::Data<AppState>,
-    body: web::Json<Booking_Create>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let userId: u64 = path.parse().unwrap();
-    let mut users = state.users.lock().unwrap();
-    let mut globalBookingId = state.globalBookingId.lock().unwrap();
-    let booking = Booking {
-        carName: body.carName.clone(),
-        days: body.days,
-        rentPerDay: body.rentPerDay,
-        status: String::from("booked"),
-        bookingId: *globalBookingId,
-        totalCost: body.rentPerDay * body.days,
-    };
-
-    for mut val in users.iter_mut() {
-        if val.id == userId {
-            val.booking.push(booking);
-            break;
-        }
-    }
-    *globalBookingId += 1;
-
-    let response = Booking_Response {
-        message: String::from("booking complete"),
-        bookingId: *globalBookingId - 1,
-        totalCost: body.rentPerDay * body.days,
-    };
-    println!("{:?}", users);
-
-    Ok(web::Json(response))
-}
-
-async fn booking_get(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.parse().unwrap();
-    let users = state.users.lock().unwrap();
-    let mut final_booking: Vec<Booking> = vec![];
-    for val in users.iter() {
-        if val.id == user_id {
-            let booking = val.booking.clone();
-            final_booking = booking;
-            break;
-        }
-    }
-    Ok(web::Json(final_booking))
-}
-
-#[derive(Serialize)]
-struct Message {
-    message: String,
-}
-async fn get_booking(
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.0.parse().unwrap();
-    let booking_id: u64 = path.1.parse().unwrap();
-    let users = state.users.lock().unwrap();
-
-    let mut final_booking: Option<Booking> = None;
-
-    let mut is_initialized = false;
-    for val in users.iter() {
-        if val.id == user_id {
-            let bookings = val.booking.clone();
-            for booking in bookings {
-                if booking.bookingId == booking_id {
-                    final_booking = Some(booking);
-                    is_initialized = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(booking) = final_booking {
-        return Ok(web::Json(booking));
-    }
-
-    let message = Message {
-        message: String::from("asdf"),
-    };
-
-    //WARNING: fix this
-    Err(actix_web::error::ErrorNotFound(404))
-}
-
-#[derive(Debug, Deserialize)]
-struct Update_Body {
-    car_name: Option<String>,
-    days: Option<u64>,
-    rent_per_day: Option<u64>,
-}
-async fn update_booking(
-    path: web::Path<(String, String)>,
-    body: web::Json<Update_Body>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.0.parse().unwrap();
-    let booking_id: u64 = path.1.parse().unwrap();
-    let mut users = state.users.lock().unwrap();
-
-    let mut booking_to_return: Option<Booking> = None;
-
-    for val in users.iter_mut() {
-        if val.id == user_id {
-            for booking in val.booking.iter_mut() {
-                if booking.bookingId == booking_id {
-                    if let Some(days) = body.days {
-                        booking.days = days;
-                        booking.totalCost = days * booking.rentPerDay;
-                    }
-                    if let Some(rent_per_day) = body.rent_per_day {
-                        booking.rentPerDay = rent_per_day;
-                        booking.totalCost = rent_per_day * booking.days;
-                    }
-                    if let Some(car_name) = body.car_name.clone() {
-                        booking.carName = car_name;
-                    }
-
-                    booking_to_return = Some(booking.clone());
-                }
-            }
-        }
-    }
-    if let Some(booking) = booking_to_return {
-        Ok(web::Json(booking))
-    } else {
-        Err(actix_web::error::ErrorNotFound(404))
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct Update_Booking_Status {
-    status: String,
-}
-#[derive(Serialize)]
-struct update_bookking_status_response {
-    message: String,
-}
-
-async fn update_booking_status(
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-    body: web::Json<Update_Booking_Status>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.0.parse().unwrap();
-    let booking_id: u64 = path.1.parse().unwrap();
-    let mut users = state.users.lock().unwrap();
-
-    for val in users.iter_mut() {
-        if val.id == user_id {
-            for booking in val.booking.iter_mut() {
-                if booking.bookingId == booking_id {
-                    booking.status = body.status.clone();
-                }
-            }
-        }
-    }
-    Ok(web::Json(update_bookking_status_response {
-        message: String::from("Status updated successfully"),
-    }))
-}
-
-#[derive(Serialize)]
-struct delete_booking_response {
-    message: String,
-}
-
-async fn delete_booking(
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.0.parse().unwrap();
-    let booking_id: u64 = path.1.parse().unwrap();
-    let mut users = state.users.lock().unwrap();
-
-    let mut index_to_remove: Option<usize> = None;
-    for val in users.iter_mut() {
-        if val.id == user_id {
-            for (index, booking) in val.booking.iter_mut().enumerate() {
-                if booking.bookingId == booking_id {
-                    index_to_remove = Some(index)
-                }
-            }
-            if let Some(indexInside) = index_to_remove {
-                val.booking.remove(indexInside);
-            }
-        }
-    }
-    Ok(web::Json(delete_booking_response {
-        message: String::from("Booking deleted successfully"),
-    }))
-}
-
-#[derive(Serialize)]
-struct summary_response {
-    userId: u64,
-    username: String,
-    totalBookings: usize,
-    totalAmountSpent: u64,
-}
-
-async fn get_summary(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> Result<impl Responder> {
-    let path = path.into_inner();
-    let user_id: u64 = path.parse().unwrap();
-    let users = state.users.lock().unwrap();
-    let mut total_booking = 0;
-    let mut totalAmountSpent = 0;
-    let mut user_name = String::new();
-
-    for val in users.iter() {
-        if val.id == user_id {
-            total_booking = val.booking.len();
-            user_name = val.username.clone();
-            for booking in val.booking.iter() {
-                totalAmountSpent += booking.totalCost;
-            }
-            break;
-        }
-    }
-    Ok(web::Json(summary_response {
-        userId: user_id,
-        username: user_name,
-        totalBookings: total_booking,
-        totalAmountSpent: totalAmountSpent,
-    }))
-}
 
 #[derive(Debug, Clone, Serialize)]
 struct Booking {
@@ -309,52 +10,294 @@ struct Booking {
     days: u64,
     rentPerDay: u64,
     status: String,
+    #[serde(skip_serializing)]
     totalCost: u64,
 }
+
 #[derive(Debug, Clone, Serialize)]
 struct User {
     id: u64,
     username: String,
     password: String,
-    booking: Vec<Booking>,
+    bookings: Vec<Booking>,
 }
 
 #[derive(Debug)]
 struct AppState {
-    globalId: Mutex<u64>,
-    globalBookingId: Mutex<u64>,
+    global_id: Mutex<u64>,
+    global_booking_id: Mutex<u64>,
     users: Mutex<Vec<User>>,
+}
+
+fn booking_public(b: &Booking) -> Value {
+    json!({
+        "bookingId": b.bookingId,
+        "carName": b.carName,
+        "days": b.days,
+        "rentPerDay": b.rentPerDay,
+        "status": b.status,
+    })
+}
+
+async fn signup(body: web::Json<Value>, state: web::Data<AppState>) -> impl Responder {
+    let username = match body.get("username").and_then(|v| v.as_str()) {
+        Some(v) => v.to_string(),
+        None => return HttpResponse::BadRequest().json(json!({ "message": "invalid data" })),
+    };
+    let password = match body.get("password").and_then(|v| v.as_str()) {
+        Some(v) => v.to_string(),
+        None => return HttpResponse::BadRequest().json(json!({ "message": "invalid data" })),
+    };
+
+    let mut users = state.users.lock().unwrap();
+    if users.iter().any(|u| u.username == username) {
+        return HttpResponse::Unauthorized().json(json!({ "message": "user already exist" }));
+    }
+    let mut gid = state.global_id.lock().unwrap();
+    let id = *gid;
+    *gid += 1;
+    users.push(User {
+        id,
+        username,
+        password,
+        bookings: Vec::new(),
+    });
+    HttpResponse::Created().json(json!({ "message": "User created successfully", "userId": id }))
+}
+
+async fn list_users(state: web::Data<AppState>) -> impl Responder {
+    let users = state.users.lock().unwrap();
+    let arr: Vec<Value> = users
+        .iter()
+        .map(|u| {
+            json!({
+                "id": u.id,
+                "username": u.username,
+                "password": u.password,
+                "bookings": u.bookings.iter().map(booking_public).collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    HttpResponse::Ok().json(json!({ "users": arr }))
+}
+
+#[derive(Deserialize)]
+struct BookingCreate {
+    carName: String,
+    days: u64,
+    rentPerDay: u64,
+}
+
+async fn create_booking(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+    body: web::Json<BookingCreate>,
+) -> impl Responder {
+    let user_id: u64 = match path.into_inner().parse() {
+        Ok(v) => v,
+        Err(_) => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    let mut users = state.users.lock().unwrap();
+    let user = match users.iter_mut().find(|u| u.id == user_id) {
+        Some(u) => u,
+        None => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    let mut gbid = state.global_booking_id.lock().unwrap();
+    let bid = *gbid;
+    *gbid += 1;
+    let total_cost = body.days * body.rentPerDay;
+    user.bookings.push(Booking {
+        bookingId: bid,
+        carName: body.carName.clone(),
+        days: body.days,
+        rentPerDay: body.rentPerDay,
+        status: "booked".into(),
+        totalCost: total_cost,
+    });
+    HttpResponse::Created().json(json!({
+        "message": format!("{} booked", body.carName),
+        "bookingId": bid,
+        "totalCost": total_cost
+    }))
+}
+
+async fn get_user_bookings(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let user_id: u64 = match path.into_inner().parse() {
+        Ok(v) => v,
+        Err(_) => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    let users = state.users.lock().unwrap();
+    let user = match users.iter().find(|u| u.id == user_id) {
+        Some(u) => u,
+        None => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    HttpResponse::Ok().json(json!({
+        "bookings": user.bookings.iter().map(booking_public).collect::<Vec<_>>()
+    }))
+}
+
+async fn get_specific_booking(
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let (uid, bid) = path.into_inner();
+    let user_id: u64 = uid.parse().unwrap_or(0);
+    let booking_id: u64 = bid.parse().unwrap_or(0);
+    let users = state.users.lock().unwrap();
+    let booking = users
+        .iter()
+        .find(|u| u.id == user_id)
+        .and_then(|u| u.bookings.iter().find(|b| b.bookingId == booking_id));
+    match booking {
+        Some(b) => HttpResponse::Ok().json(booking_public(b)),
+        None => HttpResponse::NotFound().json(json!({ "message": "booking not found" })),
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateBody {
+    carName: Option<String>,
+    days: Option<u64>,
+    rentPerDay: Option<u64>,
+}
+
+async fn update_booking(
+    path: web::Path<(String, String)>,
+    body: web::Json<UpdateBody>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let (uid, bid) = path.into_inner();
+    let user_id: u64 = uid.parse().unwrap_or(0);
+    let booking_id: u64 = bid.parse().unwrap_or(0);
+    let mut users = state.users.lock().unwrap();
+    let booking = users
+        .iter_mut()
+        .find(|u| u.id == user_id)
+        .and_then(|u| u.bookings.iter_mut().find(|b| b.bookingId == booking_id));
+    match booking {
+        Some(b) => {
+            if let Some(c) = &body.carName {
+                b.carName = c.clone();
+            }
+            if let Some(d) = body.days {
+                b.days = d;
+            }
+            if let Some(r) = body.rentPerDay {
+                b.rentPerDay = r;
+            }
+            b.totalCost = b.days * b.rentPerDay;
+            HttpResponse::Ok().json(booking_public(b))
+        }
+        None => HttpResponse::NotFound().json(json!({ "message": "booking not found" })),
+    }
+}
+
+#[derive(Deserialize)]
+struct StatusBody {
+    status: String,
+}
+
+async fn update_status(
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+    body: web::Json<StatusBody>,
+) -> impl Responder {
+    let (uid, bid) = path.into_inner();
+    let user_id: u64 = uid.parse().unwrap_or(0);
+    let booking_id: u64 = bid.parse().unwrap_or(0);
+    let mut users = state.users.lock().unwrap();
+    let booking = users
+        .iter_mut()
+        .find(|u| u.id == user_id)
+        .and_then(|u| u.bookings.iter_mut().find(|b| b.bookingId == booking_id));
+    match booking {
+        Some(b) => {
+            b.status = body.status.clone();
+            HttpResponse::Ok().json(json!({ "message": "Status updated successfully" }))
+        }
+        None => HttpResponse::NotFound().json(json!({ "message": "booking not found" })),
+    }
+}
+
+async fn delete_booking(
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let (uid, bid) = path.into_inner();
+    let user_id: u64 = uid.parse().unwrap_or(0);
+    let booking_id: u64 = bid.parse().unwrap_or(0);
+    let mut users = state.users.lock().unwrap();
+    let user = match users.iter_mut().find(|u| u.id == user_id) {
+        Some(u) => u,
+        None => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    let before = user.bookings.len();
+    user.bookings.retain(|b| b.bookingId != booking_id);
+    if user.bookings.len() < before {
+        HttpResponse::Ok().json(json!({ "message": "Booking deleted successfully" }))
+    } else {
+        HttpResponse::NotFound().json(json!({ "message": "booking not found" }))
+    }
+}
+
+async fn summary(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let user_id: u64 = path.into_inner().parse().unwrap_or(0);
+    let users = state.users.lock().unwrap();
+    let user = match users.iter().find(|u| u.id == user_id) {
+        Some(u) => u,
+        None => return HttpResponse::NotFound().json(json!({ "message": "user not found" })),
+    };
+    let total_amount: u64 = user.bookings.iter().map(|b| b.totalCost).sum();
+    HttpResponse::Ok().json(json!({
+        "userId": user_id,
+        "username": user.username,
+        "totalBookings": user.bookings.len(),
+        "totalAmountSpent": total_amount
+    }))
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let data = web::Data::new(AppState {
-        globalId: Mutex::new(1),
-        globalBookingId: Mutex::new(101),
+        global_id: Mutex::new(1),
+        global_booking_id: Mutex::new(101),
         users: Mutex::new(Vec::new()),
     });
 
     HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
+            .app_data(web::JsonConfig::default().error_handler(|_e, _req| {
+                actix_web::error::InternalError::from_response(
+                    "",
+                    HttpResponse::BadRequest().json(json!({ "message": "invalid data" })),
+                )
+                .into()
+            }))
             .route("/signup", web::post().to(signup))
-            .route("/bookings/{userId}", web::post().to(booking))
-            .route("/users", web::get().to(users))
-            .route("/bookings/{userId}", web::get().to(booking_get))
-            .route("/bookings/{userId}/{bookingId}", web::get().to(get_booking))
+            .route("/users", web::get().to(list_users))
+            .route("/bookings/{userId}", web::post().to(create_booking))
+            .route("/bookings/{userId}", web::get().to(get_user_bookings))
+            .route(
+                "/bookings/{userId}/{bookingId}/status",
+                web::put().to(update_status),
+            )
+            .route(
+                "/bookings/{userId}/{bookingId}",
+                web::get().to(get_specific_booking),
+            )
             .route(
                 "/bookings/{userId}/{bookingId}",
                 web::put().to(update_booking),
             )
             .route(
-                "/bookings/{userId}/{bookingId}/status",
-                web::put().to(update_booking_status),
-            )
-            .route(
                 "/bookings/{userId}/{bookingId}",
                 web::delete().to(delete_booking),
             )
-            .route("/summary/{userId}", web::get().to(get_summary))
+            .route("/summary/{userId}", web::get().to(summary))
     })
     .bind(("127.0.0.1", 3000))?
     .run()

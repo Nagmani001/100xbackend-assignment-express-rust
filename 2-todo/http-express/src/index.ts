@@ -71,10 +71,7 @@ app.delete("/todos/:id", (req: Request, res: Response) => {
   if (!todo) {
     return res.status(404).json({ error: "TODO not found" });
   } else {
-    todos.filter(x => {
-      return x.id !== parseInt(id);
-    });
-    console.log("todos after: ", todos);
+    todos = todos.filter(x => x.id !== parseInt(id));
     res.json({ message: "TODO deleted successfully!" });
   }
 });
